@@ -1126,6 +1126,30 @@ function Scale:contains(item)
     return false
 end
 
+function Scale:chord(i, ext)
+    local r = self[i]
+    local intervals = {Interval 'P1', self[i + 2] - r, self[i + 4] - r}
+    if ext == 7 or ext == 9 or ext == 11 or ext == 13 then
+        table.insert(intervals, self[i + 6] - r)
+    end
+    if ext == 9 or ext == 11 or ext == 13 then
+        table.insert(intervals, self[i + 8] - r)
+    end
+    if ext == 11 or ext == 13 then
+        table.insert(intervals, self[i + 10] - r)
+    end
+    if ext == 13 then
+        table.insert(intervals, self[i + 12] - r)
+    end
+    if ext == 4 then
+        table.insert(intervals, self[i + 3] - r)
+    end
+    if ext == 6 then
+        table.insert(intervals, self[i + 5] - r)
+    end
+    return Chord(r.pitch_class, intervals)
+end
+
 function Scale:__index(k)
     if type(k) == 'number' then
         local n = #self.intervals
