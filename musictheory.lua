@@ -1223,33 +1223,29 @@ function Scale:find_similar(max_levenshtein_dist, include_greek_modes)
         include_greek_modes = Scale.greek_modes_set[self.recipe] ~= nil
     end
 
-    local current_pitches = {}
-    for _, pitch in ipairs(self.pitches) do
-        current_pitches[pitch] = true
-    end
-
     local similar_scales = {}
     for _, scale in Scale:all(include_greek_modes) do
-        if scale == self then
-            goto continue
-        end
-
-        local overlap = 0
-        for _, pitch in ipairs(scale.pitches) do
-            if current_pitches[pitch] then
-                overlap = overlap + 1
-            end
-        end
-
-        if #self.intervals - overlap <= max_levenshtein_dist then
+        if scale ~= self and self:distance(scale) <= max_levenshtein_dist then
             table.insert(similar_scales, scale)
         end
-
-        ::continue::
     end
 
     table.sort(similar_scales, function(a, b) return a < b end)
     return similar_scales
+end
+
+function Scale:distance(scale)
+    local current_pitches = {}
+    for _, pitch in ipairs(self.pitches) do
+        current_pitches[tostring(pitch)] = true
+    end
+    local d = #self.intervals
+    for _, pitch in ipairs(scale.pitches) do
+        if current_pitches[tostring(pitch)] then
+            d = d - 1
+        end
+    end
+    return d
 end
 
 function Scale.static:identify(notes_or_chords, include_greek_modes)
