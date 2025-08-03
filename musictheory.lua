@@ -1249,7 +1249,7 @@ function Scale:find_similar(max_levenshtein_dist, include_greek_modes)
     end
 
     table.sort(similar_scales, function(a, b) return a < b end)
-    return ipairs(similar_scales)
+    return similar_scales
 end
 
 function Scale.static:identify(notes_or_chords)
@@ -1261,7 +1261,7 @@ function Scale.static:identify(notes_or_chords)
     end
 
     table.sort(matching_scales, function(a, b) return a < b end)
-    return ipairs(matching_scales)
+    return matching_scales
 end
 
 local function test()
