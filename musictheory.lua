@@ -1252,9 +1252,9 @@ function Scale:find_similar(max_levenshtein_dist, include_greek_modes)
     return similar_scales
 end
 
-function Scale.static:identify(notes_or_chords)
+function Scale.static:identify(notes_or_chords, include_greek_modes)
     local matching_scales = {}
-    for _, scale in ipairs(Scale:all(true)) do
+    for _, scale in ipairs(Scale:all(include_greek_modes)) do
         if scale:contains(notes_or_chords) then
             table.insert(matching_scales, scale)
         end
