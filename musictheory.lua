@@ -908,7 +908,7 @@ function Chord:invert(num_times)
     return new_chord:invert(num_times - 1)
 end
 
-function Chord.static:identify_from_notes(notes)
+function Chord.static:identify(notes)
     local n = #notes
 
     -- Sort notes by pitch
@@ -1252,10 +1252,10 @@ function Scale:find_similar(max_levenshtein_dist, include_greek_modes)
     return ipairs(similar_scales)
 end
 
-function Scale.static:identify_from_notes(notes)
+function Scale.static:identify(notes_or_chords)
     local matching_scales = {}
     for _, scale in ipairs(Scale:all(true)) do
-        if scale:contains(notes) then
+        if scale:contains(notes_or_chords) then
             table.insert(matching_scales, scale)
         end
     end
