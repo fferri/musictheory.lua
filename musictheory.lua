@@ -737,6 +737,26 @@ function Chord:initialize(root, chord_type)
     self.intervals = intervals
 end
 
+function Chord:contains(x)
+    if x:isInstanceOf(Interval) then
+        for _, i in ipairs(self.intervals) do
+            if i == x then return true end
+        end
+        return false
+    elseif x:isInstanceOf(PitchClass) or x:isInstanceOf(Note) then
+        if x:isInstanceOf(Note) then
+            x = x.pitch_class
+        end
+        local r = self.root:to_octave(1)
+        for _, i in ipairs(self.intervals) do
+            if x == (r + i).pitch_class then return true end
+        end
+        return false
+    else
+        error 'invalid type'
+    end
+end
+
 function Chord:__lt(other)
     if self.root < other.root then
         return true
