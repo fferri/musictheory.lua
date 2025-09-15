@@ -313,12 +313,10 @@ function Note:initialize(pitch_class, octave)
         return
     end
 
-    if not pitch_class:isInstanceOf(PitchClass) then
-        error('invalid pitch_class type')
-    end
-    if math.type(octave) ~= 'integer' or octave < 0 or octave > 9 then
-        error('invalid octave value')
-    end
+    assert(pitch_class:isInstanceOf(PitchClass), 'invalid pitch_class type')
+    assert(type(octave) == 'number', 'invalid octave type: ' .. type(octave))
+    assert(math.type(octave) == 'integer', 'invalid octave type: ' .. math.type(octave))
+    assert(octave >= 0 and octave <= 9, 'invalid octave value: ' .. octave)
 
     self.pitch_class = pitch_class
     self.octave = octave
