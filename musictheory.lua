@@ -53,6 +53,52 @@ table.tostring = table.tostring or function(t)
     return '{' .. s .. '}'
 end
 
+table.map = table.map or function (f, ...)
+    assert(type(f) == 'function')
+    local tbls, ret = {...}, {}
+    local i = 1
+    while true do
+        local args = {}
+        for j, tbl in ipairs(tbls) do
+            assert(type(tbl) == 'table')
+            if tbl[i] == nil then return ret end
+            table.insert(args, tbl[i])
+        end
+        table.insert(ret, f(table.unpack(args)))
+        i = i + 1
+    end
+    return ret
+end
+
+table.reduce = table.reduce or function(f, tbl, initial)
+    assert(type(f) == 'function')
+    assert(type(tbl) == 'table')
+    initial = initial or 0
+    local y = initial
+    for i, x in ipairs(tbl) do y = f(y, x) end
+    return y
+end
+
+table.filter = table.filter or function(f, tbl)
+    assert(type(f) == 'function')
+    assert(type(tbl) == 'table')
+    local ret = {}
+    for i, x in ipairs(tbl) do if f(x) then table.insert(ret, x) end end
+    return ret
+end
+
+table.keys = table.keys or function(tbl)
+    local ret = {}
+    for k, v in pairs(tbl) do table.insert(ret, k) end
+    return ret
+end
+
+table.slice = table.slice or function(tbl, first, last, step)
+    local ret = {}
+    for i = first or 1, last or #t, step or 1 do table.insert(ret, tbl[i]) end
+    return ret
+end
+
 utf8.sub = utf8.sub or function(s, i, j)
     local start_byte = utf8.offset(s, i) or (#s + 1)
     local end_byte = j and (utf8.offset(s, j + 1) or (#s + 1)) - 1 or #s
