@@ -1309,6 +1309,55 @@ function Scale:distance(scale)
     return d
 end
 
+function Scale:wpcp_score(weighted_items)
+    -- first, expand items to pitches:
+    local weighted_pitches_m = {}
+    for item, weight in pairs(weighted_items) do
+        assert(type(item) == 'table', 'invalid item type: ' .. type(item))
+        if item.class == PitchClass then
+            weighted_pitches_m[item] = weighted_pitches_m[item] or {}
+            table.insert(weighted_pitches_m[item], weight)
+        elseif item.class == Note then
+            weighted_pitches_m[item.pitch_class] = weighted_pitches_m[item.pitch_class] or {}
+            table.insert(weighted_pitches_m[item.pitch_class], weight)
+        elseif item.class == Chord then
+            for _, pitch in ipairs(item:pitches()) do
+                weighted_pitches_m[pitch] = weighted_pitches_m[pitch] or {}
+                table.insert(weighted_pitches_m[pitch], weight)
+            end
+        else
+            error('invalid item class: ' .. tostring(item.class))
+        end
+    end
+
+    -- then average weight:
+    local weighted_pitches = {}
+    for pitch, weights in pairs(weighted_pitches_m) do
+        weighted_pitches[pitch] = 0.0
+        for _, weight in ipairs(weights) do
+            weighted_pitches[pitch] = weighted_pitches[pitch] + weight
+        end
+        weighted_pitches[pitch] = weighted_pitches[pitch] / #weights
+    end
+
+    -- compute score:
+    local score = 0.0
+    if self.recipe == 'natural_minor' then
+        -- prefer major
+        score = -0.01
+    end
+    for pitch, weight in pairs(weighted_pitches) do
+        if self.root == pitch then
+            score = score + 1.5 * weight
+        elseif self:contains(pitch) then
+            score = score + 1.0 * weight
+        else
+            score = score - 0.5 * weight
+        end
+    end
+    return score
+end
+
 function Scale.static:identify(notes_or_chords, include_greek_modes)
     local matching_scales = {}
     for _, scale in ipairs(Scale:all(include_greek_modes)) do
@@ -1319,6 +1368,21 @@ function Scale.static:identify(notes_or_chords, include_greek_modes)
 
     table.sort(matching_scales, function(a, b) return a < b end)
     return matching_scales
+end
+
+function Scale.static:identify_wpcp_all(weighted_items, include_greek_modes)
+    local scores = {}
+    for _, scale in ipairs(Scale:all(include_greek_modes)) do
+        table.insert(scores, {scale:wpcp_score(weighted_items), scale})
+    end
+    table.sort(scores, function(a, b) return a[1] > b[1] end)
+    return scores
+end
+
+function Scale.static:identify_wpcp(weighted_items, include_greek_modes)
+    local scores = self:identify_wpcp_all(weighted_items, include_greek_modes)
+    if #scores == 0 then return end
+    return scores[1][2], scores[1][1]
 end
 
 local function test()
