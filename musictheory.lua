@@ -1244,7 +1244,7 @@ function Scale:wpcp_score(weighted_items)
     end
     for pitch, weight in pairs(weighted_pitches) do
         if self.root == pitch then
-            score = score + 1.5 * weight
+            score = score + 1.05 * weight
         elseif self:contains(pitch) then
             score = score + 1.0 * weight
         else
