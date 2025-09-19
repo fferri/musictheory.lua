@@ -105,14 +105,6 @@ utf8.sub = utf8.sub or function(s, i, j)
     return s:sub(start_byte, end_byte)
 end
 
-local set = {}
-
-function set.size(t)
-    local sz = 0
-    for k, v in pairs(t) do sz = sz + 1 end
-    return sz
-end
-
 PitchClass.static.max_accidentals = 6
 PitchClass.static.unicode_output = true
 
@@ -149,35 +141,27 @@ function PitchClass.static:all(max_accidentals)
     return result
 end
 
-function PitchClass.static:parse(s)
-    assert(type(s) == 'string')
-    assert(utf8.len(s) >= 1, 'invalid pitch class: "' .. s .. '"')
-    local name, accidentals = utf8.sub(s, 1, 1), utf8.sub(s, 2)
-    if accidentals == '' then
-        accidentals = 0
-    elseif accidentals == '𝄫' then
-        accidentals = -2
-    elseif accidentals == '𝄪' then
-        accidentals = 2
-    else
-        local acc0 = utf8.sub(accidentals, 1, 1)
-        assert(acc0 == '#' or acc0 == 'b' or acc0 == '♯' or acc0 == '♭', 'invalid pitch class: ' .. s)
-        for i = 2, utf8.len(accidentals) do
-            assert(utf8.sub(accidentals, i, i) == acc0, 'inconsistent accidentals')
-        end
-        local s = (acc0 == '#' or acc0 == '♯') and 1 or -1
-        accidentals = utf8.len(accidentals) * s
-    end
-    return PitchClass(name, accidentals)
-end
-
 function PitchClass:initialize(name, accidentals)
     assert(type(name) == 'string')
     if accidentals == nil then
-        local pc = PitchClass:parse(name)
-        self.name = pc.name
-        self.accidentals = pc.accidentals
-        return
+        accidentals = 0
+        local pitch_class_str = name
+        assert(utf8.len(pitch_class_str) >= 1, 'invalid pitch class: "' .. pitch_class_str .. '"')
+        name, accidentals_str = utf8.sub(pitch_class_str, 1, 1), utf8.sub(pitch_class_str, 2)
+        if accidentals_str == '' then
+        elseif accidentals_str == '𝄫' then
+            accidentals = accidentals - 2
+        elseif accidentals_str == '𝄪' then
+            accidentals = accidentals + 2
+        else
+            local acc0 = utf8.sub(accidentals_str, 1, 1)
+            assert(acc0 == '#' or acc0 == 'b' or acc0 == '♯' or acc0 == '♭', 'invalid pitch class: ' .. pitch_class_str)
+            for i = 2, utf8.len(accidentals_str) do
+                assert(utf8.sub(accidentals_str, i, i) == acc0, 'inconsistent accidentals')
+            end
+            local s = (acc0 == '#' or acc0 == '♯') and 1 or -1
+            accidentals = accidentals + utf8.len(accidentals_str) * s
+        end
     end
     assert(PitchClass.info[name] ~= nil, 'invalid pitch name: ' .. name)
     assert(math.type(accidentals) == 'integer')
@@ -265,19 +249,6 @@ function Note.static:all(min_octave, max_octave, max_accidentals)
     return notes
 end
 
-function Note.static:parse(s)
-    if type(s) == 'string' then
-        assert(s ~= '', 'invalid note format: empty string')
-        local pitch_name, octave_str = s:match("^(%D+)(%d+)$")
-        assert(octave_str, 'invalid note format: missing octave number: "' .. s .. '"')
-        assert(pitch_name, 'invalid note format: missing pitch class: "' .. s .. '"')
-        local octave = tonumber(octave_str)
-        local pc = PitchClass:parse(pitch_name)
-        return Note(pc, octave)
-    end
-    error('invalid input type for Note.parse')
-end
-
 function Note.static:from_number(number, allowed_accidentals)
     allowed_accidentals = allowed_accidentals or {-2, -1, 0, 1, 2}
     if not Note.number_inv_mapping then
@@ -306,21 +277,22 @@ end
 
 function Note:initialize(pitch_class, octave)
     if type(pitch_class) == 'string' and octave == nil then
-        local n = Note:parse(pitch_class)
-        self.pitch_class = n.pitch_class
-        self.octave = n.octave
-        self.number = n.number
-        return
+        local note_str = pitch_class
+        assert(note_str ~= '', 'invalid note format: empty string')
+        local pitch_name, octave_str = note_str:match("^(%D+)(%d+)$")
+        assert(octave_str, 'invalid note format: missing octave number: ' .. note_str)
+        assert(pitch_name, 'invalid note format: missing pitch class: ' .. note_str)
+        self.pitch_class = PitchClass(pitch_name)
+        self.octave = tonumber(octave_str)
+    else
+        self.pitch_class = pitch_class
+        self.octave = octave
     end
-
-    assert(pitch_class:isInstanceOf(PitchClass), 'invalid pitch_class type')
-    assert(type(octave) == 'number', 'invalid octave type: ' .. type(octave))
-    assert(math.type(octave) == 'integer', 'invalid octave type: ' .. math.type(octave))
-    assert(octave >= 0 and octave <= 9, 'invalid octave value: ' .. octave)
-
-    self.pitch_class = pitch_class
-    self.octave = octave
-    self.number = pitch_class.number + octave * 12
+    assert(type(self.pitch_class) == 'table', 'invalid pitch_class type: ' .. type(self.pitch_class))
+    assert(PitchClass.isInstanceOf(self.pitch_class, PitchClass), 'invalid pitch_class class: ' .. tostring(self.pitch_class.class))
+    assert(type(self.octave) == 'number', 'invalid octave type: ' .. type(self.octave))
+    assert(math.type(self.octave) == 'integer', 'invalid octave type: ' .. math.type(self.octave))
+    assert(self.octave >= 0 and self.octave <= 9, 'invalid octave value: ' .. self.octave)
 end
 
 function Note:to_octave(new_octave)
@@ -328,7 +300,7 @@ function Note:to_octave(new_octave)
 end
 
 function Note:__add(other)
-    if other:isInstanceOf(Interval) then
+    if Interval.isInstanceOf(other, Interval) then
         if other:is_compound() then
             local current = self
             for _, interval in ipairs(other:split()) do
@@ -371,7 +343,7 @@ function Note:__add(other)
 end
 
 function Note:__sub(other)
-    if other:isInstanceOf(Interval) then
+    if Interval.isInstanceOf(other, Interval) then
         if other:is_compound() then
             local current = self
             for _, interval in ipairs(other:split()) do
@@ -380,7 +352,7 @@ function Note:__sub(other)
             return current
         end
         return self:to_octave(self.octave - 1) + other:complement()
-    elseif other:isInstanceOf(Note) then
+    elseif Note.isInstanceOf(other, Note) then
         local semitones = self.number - other.number
         if semitones < -1 then
             error('interval smaller than diminished unison')
@@ -435,7 +407,9 @@ function Note:__repr()
 end
 
 function Note:__index(k)
-    if k == 'midi_note' then
+    if k == 'number' then
+        return self.pitch_class.number + self.octave * 12
+    elseif k == 'midi_note' then
         return self.number + 12
     elseif k == 'frequency' then
         local A4 = Note(PitchClass('A'), 4)
@@ -496,42 +470,24 @@ function Interval.static:all(include_atypical)
     return intervals
 end
 
-function Interval.static:parse(s)
-    if type(s) == 'table' and s.class == Interval then
-        return s
-    end
-    if type(s) ~= 'string' then
-        error('invalid input type')
-    end
-
-    local quality, size = s:match('^([dA]+)(%d+)$')
-    if not quality then
-        quality, size = s:match('^([mPM])(%d+)$')
-        if not quality then
-            error('could not parse Interval: ' .. s)
-        end
-    end
-
-    return Interval(quality, tonumber(size))
-end
-
 function Interval:initialize(quality, size)
+    assert(type(quality) == 'string', 'invalid type for quality: ' .. type(quality))
     if not size then
-        local parsed = Interval:parse(quality)
-        self.quality = parsed.quality
-        self.size = parsed.size
-        self.semitones = parsed.semitones
-        return
-    end
-
-    if type(quality) ~= 'string' then
-        error('invalid quality type')
+        local interval_str = quality
+        quality, size = interval_str:match('^([dA]+)(%d+)$')
+        if not quality then
+            quality, size = interval_str:match('^([mPM])(%d+)$')
+            if not quality then
+                error('could not parse interval: ' .. interval_str)
+            end
+        end
+        size = tonumber(size)
     end
     if not Interval.quality_inverse[quality] then
-        error('invalid interval quality')
+        error('invalid interval quality: ' .. quality)
     end
     if type(size) ~= 'number' or size <= 0 or math.floor(size) ~= size then
-        error('invalid interval size')
+        error('invalid interval size: ' .. size)
     end
 
     self.quality = quality
@@ -646,8 +602,17 @@ Chord.static.recipes = {
     ['maj9'] = {'P1', 'M3', 'P5', 'M7', 'M9'},
     ['aug9'] = {'P1', 'M3', 'A5', 'm7', 'M9'},
     ['dim9'] = {'P1', 'm3', 'd5', 'd7', 'M9'},
+    ['dom11'] = {'P1', 'M3', 'P5', 'm7', 'M9', 'P11'},
+    ['min11'] = {'P1', 'm3', 'P5', 'm7', 'M9', 'P11'},
+    ['maj11'] = {'P1', 'M3', 'P5', 'M7', 'M9', 'P11'},
+    ['aug11'] = {'P1', 'M3', 'A5', 'm7', 'M9', 'P11'},
+    ['dim11'] = {'P1', 'm3', 'd5', 'd7', 'M9', 'P11'},
+    ['dom13'] = {'P1', 'M3', 'P5', 'm7', 'M9', 'P11', 'm13'},
+    ['min13'] = {'P1', 'm3', 'P5', 'm7', 'M9', 'P11', 'm13'},
+    ['maj13'] = {'P1', 'M3', 'P5', 'M7', 'M9', 'P11', 'M13'},
+    ['aug13'] = {'P1', 'M3', 'A5', 'm7', 'M9', 'P11', 'm13'},
     ['maj6'] = {'P1', 'M3', 'P5', 'M6'},
-    ['min6'] = {'P1', 'm3', 'P5', 'm6'},
+    ['min/min6'] = {'P1', 'm3', 'P5', 'm6'},
     ['dom6'] = {'P1', 'M3', 'P5', 'm6'},
     ['min/maj6'] = {'P1', 'm3', 'P5', 'M6'},
 }
@@ -677,20 +642,11 @@ Chord.static.aliases = {
     ['+9'] = 'aug9',
     ['°9'] = 'dim9',
     ['M6'] = 'maj6',
-    ['m6'] = 'min6',
+    ['m6'] = 'min/maj6',
+    ['m/m6'] = 'min/min6',
     ['6'] = 'dom6',
     ['m/M6'] = 'min/maj6',
 }
-
-Chord.static.recipes_inv = {}
-for name, intervals in pairs(Chord.recipes) do
-    local key = {}
-    for _, s in ipairs(intervals) do
-        table.insert(key, s)
-    end
-    table.sort(key)
-    Chord.recipes_inv[table.concat(key, '|')] = name
-end
 
 function Chord.static:all(root)
     local roots
@@ -714,108 +670,113 @@ function Chord.static:all(root)
     return chords
 end
 
-function Chord.static:parse(s)
-    if type(s) == 'table' and s.class == Chord then
-        return s
-    end
-    if type(s) ~= 'string' then
-        error('invalid input type')
+function Chord:initialize(root, chord_type)
+    --[[
+    usages:
+        - Chord('Cmaj7'): parse a chord from string
+        - Chord(chort_in_root_position, inversion): chord inversion -> chord:invert(inversion)
+        - Chord(PitchClass('C'), 'maj7'): construct chord from root (PitchClass) & recipe
+    --]]
+
+    if type(root) == 'string' and chord_type == nil then
+        local chord_str = root
+        if chord_str:find('/') then
+            local chord_str, bass_str = chord_str:match('^([^/]+)/(.+)$')
+            self.root_chord = Chord(chord_str)
+            self.bass = PitchClass(bass_str)
+        else
+            local suffixes = {}
+            for name in pairs(Chord.recipes) do table.insert(suffixes, name) end
+            for alias in pairs(Chord.aliases) do table.insert(suffixes, alias) end
+            table.sort(suffixes, function(a, b) return #a > #b end)
+
+            for _, suffix in ipairs(suffixes) do
+                if #chord_str >= #suffix and chord_str:sub(-#suffix) == suffix then
+                    local root_str = chord_str:sub(1, -#suffix - 1)
+                    self.root = PitchClass(root_str)
+                    self.recipe = Chord.aliases[suffix] or suffix
+                    break
+                end
+            end
+
+            assert(self.root and self.recipe, 'invalid chord: ' .. chord_str)
+        end
+    elseif Chord.isInstanceOf(root, Chord) then
+        self.root_chord = root
+        if math.type(chord_type) == 'integer' then
+            assert(chord_type > 0 and chord_type < #self.root_chord.pitches, 'invalid inversion number: ' .. chord_type)
+            self.bass = self.root_chord.pitches[chord_type + 1]
+        elseif PitchClass.isInstanceOf(chord_type, PitchClass) then
+            self.bass = chord_type
+        else
+            error('invalid bass type or inversion number: ' .. type(chord_type))
+        end
+    else
+        self.root = root
+        if type(self.root) == 'string' then
+            self.root = PitchClass(self.root)
+        elseif Note.isInstanceOf(self.root, Note) then
+            self.root = self.root.pitch_class
+        end
+        assert(PitchClass.isInstanceOf(self.root, PitchClass), 'invalid root type')
+
+        if type(chord_type) == 'string' then
+            chord_type = self.class.aliases[chord_type] or chord_type
+            self.recipe = chord_type
+            if not self.class.recipes[chord_type] then
+                error('invalid chord_type: ' .. chord_type)
+            end
+        elseif type(chord_type) == 'table' and chord_type[1].class == Interval then
+            self.recipe = '[' .. table.concat(table.map(tostring, chord_type), ',') .. ']'
+            self.intervals = chord_type
+        else
+            error('invalid chord_type type: ' .. type(chord_type))
+        end
     end
 
-    -- Handle inversions
-    if s:find('/') then
-        local chord_str, root_str = s:match('^([^/]+)/(.+)$')
-        local chord = self:parse(chord_str)
-        local root = PitchClass:parse(root_str)
-        local inversion = 0
-        for i, pitch in ipairs(chord:pitches()) do
-            if pitch == root then
-                inversion = i - 1
-                break
+    if self.root_chord and self.bass then
+        self.root = self.root_chord.root
+
+        for i, pc in ipairs(self.root_chord.pitches) do
+            if pc == self.bass then
+                self.inversion = i - 1
             end
         end
-        return chord:invert(inversion)
-    end
+        assert(self.inversion, 'bass note is not part of the chord')
 
-    -- Find matching suffix
-    local suffixes = {}
-    for name in pairs(self.recipes) do
-        table.insert(suffixes, name)
-    end
-    for alias in pairs(self.aliases) do
-        table.insert(suffixes, alias)
-    end
-
-    -- Sort by descending length to match longest first
-    table.sort(suffixes, function(a, b) return #a > #b end)
-
-    for _, suffix in ipairs(suffixes) do
-        if #s >= #suffix and s:sub(-#suffix) == suffix then
-            local root_str = s:sub(1, -#suffix - 1)
-            local root = PitchClass:parse(root_str)
-            local chord_type = self.aliases[suffix] or suffix
-            return Chord(root, chord_type)
+        self.intervals = {}
+        local n = #self.root_chord.intervals
+        for i = 1, n do
+            table.insert(self.intervals, self.root_chord.intervals[(i - 1 + self.inversion) % n + 1])
         end
     end
 
-    error('invalid chord: ' .. s)
-end
-
-function Chord:initialize(root, chord_type)
-    if type(root) == 'string' and not chord_type then
-        local parsed = Chord:parse(root)
-        self.root = parsed.root
-        self.intervals = parsed.intervals
-        return
-    end
-
-    if type(root) == 'string' then
-        root = PitchClass:parse(root)
-    end
-    if root.class ~= PitchClass then
-        error('invalid root type')
-    end
-
-    if not chord_type then
-        chord_type = 'maj'
-    end
-
-    if type(chord_type) == 'string' then
-        chord_type = self.class.aliases[chord_type] or chord_type
-        if not self.class.recipes[chord_type] then
-            error('invalid chord_type: ' .. chord_type)
-        end
-        chord_type = self.class.recipes[chord_type]
-    end
-
-    if type(chord_type) ~= 'table' then
-        error('invalid chord_type type')
-    end
-
-    -- Convert string intervals to Interval objects
-    local intervals = {}
-    for _, interval in ipairs(chord_type) do
-        if type(interval) == 'string' then
-            table.insert(intervals, Interval:parse(interval))
-        elseif interval.class == Interval then
-            table.insert(intervals, interval)
-        else
-            error('invalid interval type')
+    if self.intervals == nil then
+        assert(self.recipe ~= nil, 'missing recipe')
+        assert(Chord.recipes[self.recipe], 'invalid recipe')
+        self.intervals = {}
+        for _, interval in ipairs(Chord.recipes[self.recipe]) do
+            if type(interval) == 'string' then
+                table.insert(self.intervals, Interval(interval))
+            elseif Interval.isInstanceOf(interval, Interval) then
+                table.insert(self.intervals, interval)
+            else
+                error('invalid interval type: ' .. type(interval))
+            end
         end
     end
+    table.sort(self.intervals, function(a, b) return a < b end)
 
-    self.root = root
-    table.sort(intervals, function(a, b) return a < b end)
-    self.intervals = intervals
+    assert(self.root)
 end
 
 function Chord:contains(x)
-    if x:isInstanceOf(Interval) then
+    if Interval.isInstanceOf(x, Interval) then
         for _, i in ipairs(self.intervals) do
             if i == x then return true end
         end
         return false
-    elseif x:isInstanceOf(PitchClass) or x:isInstanceOf(Note) then
+    elseif PitchClass.isInstanceOf(x, PitchClass) or Note.isInstanceOf(x, Note) then
         if x:isInstanceOf(Note) then
             x = x.pitch_class
         end
@@ -827,6 +788,17 @@ function Chord:contains(x)
     else
         error 'invalid type'
     end
+end
+
+function Chord:__index(k)
+    if k == 'pitches' then
+        local pitches = {}
+        for _, note in ipairs(self:notes()) do
+            table.insert(pitches, note.pitch_class)
+        end
+        return pitches
+    end
+    return rawget(self, k)
 end
 
 function Chord:__lt(other)
@@ -865,10 +837,17 @@ function Chord:__eq(other)
 end
 
 function Chord:__tostring()
-    return self:recipe().full_name
+    if self.root_chord then
+        return tostring(self.root_chord) .. '/' .. tostring(self.bass)
+    else
+        return tostring(self.root) .. self.recipe
+    end
 end
 
 function Chord:__hash()
+    if self.root_chord then
+        return self.root_chord:__hash() + self.bass:__hash()
+    end
     local h = self.root:__hash()
     for _, interval in ipairs(self.intervals) do
         h = h + interval:__hash()
@@ -880,50 +859,6 @@ function Chord:__len()
     return #self.intervals
 end
 
-function Chord:recipe()
-    if self._recipe then
-        return self._recipe
-    end
-
-    for _, result in ipairs(Chord:identify_from_intervals(self.intervals)) do
-        local recipe_name, inversion = result.name, result.inversion
-        local root_str = tostring(self.root)
-        local full_name = root_str .. recipe_name
-        if inversion > 0 then
-            local base_note = Note(self.root, 4)
-            local inv_note = base_note + self.intervals[1]
-            full_name = full_name .. '/' .. tostring(inv_note.pitch_class)
-        end
-        self._recipe = {
-            known = true,
-            name = recipe_name,
-            inversion = inversion,
-            full_name = full_name
-        }
-        return self._recipe
-    end
-
-    local interval_strs = {}
-    for _, interval in ipairs(self.intervals) do
-        table.insert(interval_strs, tostring(interval))
-    end
-    self._recipe = {
-        known = false,
-        name = '',
-        inversion = 0,
-        full_name = table.concat(interval_strs, '-')
-    }
-    return self._recipe
-end
-
-function Chord:pitches()
-    local pitches = {}
-    for _, note in ipairs(self:notes()) do
-        table.insert(pitches, note.pitch_class)
-    end
-    return pitches
-end
-
 function Chord:notes(base_octave)
     base_octave = base_octave or 4
     local root_note = Note(self.root, base_octave)
@@ -931,130 +866,91 @@ function Chord:notes(base_octave)
     for _, interval in ipairs(self.intervals) do
         table.insert(notes, root_note + interval)
     end
+    if self.inversion then
+        for i = 1, self.inversion do
+            table.insert(notes, table.remove(notes, 1) + Interval 'P8')
+        end
+    end
     return notes
 end
 
 function Chord:invert(num_times)
-    if num_times == 0 then
-        return self
-    end
-
-    local new_intervals = {}
-    for i = 2, #self.intervals do
-        table.insert(new_intervals, self.intervals[i])
-    end
-    table.insert(new_intervals, self.intervals[1] + Interval:parse('P8'))
-
-    local new_chord = Chord(self.root, new_intervals)
-    return new_chord:invert(num_times - 1)
-end
-
-function Chord.static:identify_from_notes(notes)
-    table.sort(notes, function(a, b) return a < b end)
-
-    local n = #notes
-
-    local results = {}
-    for mask = 0, (1 << n) - 1 do
-        local new_notes = {}
-        for i, note in ipairs(notes) do
-            if mask & (1 << (i-1)) ~= 0 then
-                table.insert(new_notes, note + Interval:parse('P8'))
+    if PitchClass.isInstanceOf(num_times, PitchClass) then
+        local root_chord = self.root_chord or self
+        for i, pc in ipairs(root_chord.pitches) do
+            if pc == self.bass then return root_chord:invert(i - 1) end
+        end
+        error('bass note is not part of the chord')
+    else
+        assert(math.type(num_times) == 'integer', 'incorrect inversion type: ' .. type(num_times))
+        if num_times == 0 then
+            return self
+        else
+            if self.root_chord then
+                return self.root_chord:invert(self.inversion + num_times)
             else
-                table.insert(new_notes, note)
-            end
-        end
-        table.sort(new_notes, function(a, b) return a < b end)
-
-        local lowest_note = new_notes[1]
-        local intervals = {}
-        for _, note in ipairs(new_notes) do
-            table.insert(intervals, note - lowest_note)
-        end
-
-        for _, recipe_info in ipairs(self:identify_from_intervals(intervals)) do
-            for inversion = 0, n-1 do
-                for _, root in ipairs(notes) do
-                    local c = Chord(root.pitch_class, recipe_info.name)
-                    local inv_c = c:invert(inversion)
-                    local c_notes = inv_c:notes()
-                    table.sort(c_notes, function(a, b) return a < b end)
-
-                    local match = true
-                    for j = 1, n do
-                        if c_notes[j].pitch_class ~= notes[j].pitch_class then
-                            match = false
-                            break
-                        end
-                    end
-
-                    if match then
-                        table.insert(results, inv_c)
-                    end
-                end
+                return Chord(self, num_times)
             end
         end
     end
-
-    return results
 end
 
 function Chord.static:identify_from_intervals(intervals)
-    table.sort(intervals, function(a, b) return a < b end)
+    local root = Note 'C4'
+    local notes = table.map(function(i) return root + i end, intervals)
+    return Chord:identify_from_notes(notes)
+end
 
-    local function flip(interval)
-        if interval:is_compound() or interval == Interval('P8') then
-            return interval:reduce()
-        else
-            return interval + Interval:parse('P8')
-        end
+function Chord.static:identify_from_notes(notes)
+    local pitches = table.map(function(n) return n.pitch_class end, notes)
+    return Chord:identify_from_pitches(pitches)
+end
+
+function Chord.static:identify_from_pitches(pitches)
+    local function stringKey(pitches1)
+        local pitchSet = {}
+        for _, p in ipairs(pitches1) do pitchSet[tostring(p)] = 1 end
+        local pitchKeys = {}
+        for p in pairs(pitchSet) do table.insert(pitchKeys, p) end
+        table.sort(pitchKeys, function(a, b) return PitchClass(a) < PitchClass(b) end)
+        local s = table.concat(pitchKeys, '|')
+        local bass = pitches1[1]
+        s = s .. '/' .. tostring(bass)
+        return s
     end
 
-    local n = #intervals
-
-    local results = {}
-    for mask = 0, (1 << n) - 1 do
-        local new_intervals = {}
-        for i, interval in ipairs(intervals) do
-            if mask & (1 << (i-1)) ~= 0 then
-                table.insert(new_intervals, flip(interval))
-            else
-                table.insert(new_intervals, interval)
-            end
-        end
-        table.sort(new_intervals, function(a, b) return a < b end)
-
-        local key_parts = {}
-        for _, ival in ipairs(new_intervals) do
-            table.insert(key_parts, tostring(ival))
-        end
-        table.sort(key_parts)
-        local key = table.concat(key_parts, '|')
-
-        if self.recipes_inv[key] then
-            local recipe_name = self.recipes_inv[key]
-            local c = Chord(PitchClass:parse('C'), recipe_name)
-            for inversion = 0, n-1 do
-                local inv_chord = c:invert(inversion)
-                if #inv_chord.intervals == #intervals then
-                    local match = true
-                    for j = 1, #intervals do
-                        if inv_chord.intervals[j] ~= intervals[j] then
-                            match = false
-                            break
-                        end
-                    end
-                    if match then
-                        table.insert(results, {
-                            name = recipe_name,
-                            inversion = inversion
-                        })
-                    end
+    if not Chord.static.by_pitches then
+        Chord.static.by_pitches = {}
+        for _, pc in ipairs(PitchClass:all()) do
+            for recipe_name, intervals in pairs(Chord.recipes) do
+                for inv = 0, #intervals - 1 do
+                    local chord = Chord(pc, recipe_name):invert(inv)
+                    local key = stringKey(chord.pitches)
+                    Chord.static.by_pitches[key] = Chord.static.by_pitches[key] or {}
+                    Chord.static.by_pitches[key][chord] = 1
                 end
             end
         end
     end
 
+    local function score(chord)
+        local bass, root = chord.pitches[1].number, chord.root.number
+        if bass > root then root = root + 12 end
+        local d = root - bass
+        local s = 0.0
+        return ({
+            [0] = 1.0, [1] = 0.1, [2] = 0.4, [3] = 0.7,
+            [4] = 0.7, [5] = 0.6, [6] = 0.1, [7] = 0.8,
+            [8] = 0.3, [9] = 0.7, [10] = 0.3, [11] = 0.1,
+        })[d]
+    end
+
+    local k = stringKey(pitches)
+    local results = {}
+    for chord in pairs(Chord.static.by_pitches[k] or {}) do
+        table.insert(results, chord)
+    end
+    table.sort(results, function(a, b) return score(a) > score(b) end)
     return results
 end
 
@@ -1108,7 +1004,7 @@ end
 
 function Scale:initialize(root, scale_type)
     if type(root) == 'string' then
-        root = PitchClass:parse(root)
+        root = PitchClass(root)
     end
 
     if root.class ~= PitchClass then
@@ -1129,7 +1025,7 @@ function Scale:initialize(root, scale_type)
     -- Convert string intervals to Interval objects
     local intervals = {}
     for _, interval_str in ipairs(scale_type) do
-        table.insert(intervals, Interval:parse(interval_str))
+        table.insert(intervals, Interval(interval_str))
     end
 
     self.intervals = intervals
@@ -1146,7 +1042,7 @@ function Scale:contains(item)
         end
         return false
     elseif item.class == Chord then
-        for _, pitch in ipairs(item:pitches()) do
+        for _, pitch in ipairs(item.pitches) do
             if not self:contains(pitch) then
                 return false
             end
@@ -1320,8 +1216,8 @@ function Scale:wpcp_score(weighted_items)
         elseif item.class == Note then
             weighted_pitches_m[item.pitch_class] = weighted_pitches_m[item.pitch_class] or {}
             table.insert(weighted_pitches_m[item.pitch_class], weight)
-        elseif item.class == Chord then
-            for _, pitch in ipairs(item:pitches()) do
+        elseif item.class == Chord or item.class == Scale then
+            for _, pitch in ipairs(item.pitches) do
                 weighted_pitches_m[pitch] = weighted_pitches_m[pitch] or {}
                 table.insert(weighted_pitches_m[pitch], weight)
             end
@@ -1365,7 +1261,6 @@ function Scale.static:identify(notes_or_chords, include_greek_modes)
             table.insert(matching_scales, scale)
         end
     end
-
     table.sort(matching_scales, function(a, b) return a < b end)
     return matching_scales
 end
@@ -1385,655 +1280,10 @@ function Scale.static:identify_wpcp(weighted_items, include_greek_modes)
     return scores[1][2], scores[1][1]
 end
 
-local function test()
-    require 'busted.runner'()
-    --local busted = require 'busted'
-    --local describe = busted.describe
-    --local it = busted.it
-    --local assert = busted.assert
-    --local before_each = busted.before_each
-    --local after_each = busted.after_each
-    --local require = require
-
-    describe('TestsForPitchClass', function()
-        it('pitchclass_creation', function()
-            local function test1(pc, n, a)
-                local p = PitchClass(pc)
-                assert.equal(p.name, n)
-                assert.equal(p.accidentals, a)
-            end
-            test1('C', 'C', 0)
-            test1('C#', 'C', 1)
-            test1('C##', 'C', 2)
-            test1('Cb', 'C', -1)
-            test1('Cbb', 'C', -2)
-            test1('D', 'D', 0)
-            test1('Bbbb', 'B', -3)
-
-            local bad_values = {1, true, nil, 1.5, {}, function() end}
-            for _, v in ipairs(bad_values) do
-                assert.has_error(function() PitchClass(v, 0) end)
-            end
-            assert.has_error(function() PitchClass('Z', 0) end)
-            for _, v in ipairs({'1', 1.5, {}, function() end}) do
-                assert.has_error(function() PitchClass('C', v) end)
-            end
-            assert.has_error(function() PitchClass('C', 2000) end)
-        end)
-
-        it('pitchclass_parsing', function()
-            local function test1(s, name, accidentals)
-                assert.equal(PitchClass:parse(s), PitchClass(name, accidentals))
-            end
-            for _, n in ipairs{'C','D','E','F','G','A','B'} do
-                for acc = -3, 3 do
-                    if acc < 0 then
-                        test1(n .. string.rep('b', -acc), n, acc)
-                    else
-                        test1(n .. string.rep('#', acc), n, acc)
-                    end
-                end
-            end
-
-            local bad_names = {'C#######', 'Dbbbbbbb', 'H', '$'}
-            for _, name in ipairs(bad_names) do
-                assert.has_error(function() PitchClass:parse(name) end)
-            end
-
-            local function test3(a, b)
-                assert.equal(PitchClass:parse(a), PitchClass:parse(b))
-            end
-            test3('B♭', 'Bb')
-            test3('B𝄫', 'Bbb')
-            test3('B♭♭', 'Bbb')
-            test3('B♭♭♭', 'Bbbb')
-            test3('B♭♭♭♭', 'Bbbbb')
-            test3('C♯', 'C#')
-            test3('C𝄪', 'C##')
-            test3('C♯♯', 'C##')
-            test3('C♯♯♯', 'C###')
-            test3('C♯♯♯♯', 'C####')
-
-            local bad_values = {1, true, nil, 1.5, {}, function() end}
-            for _, v in ipairs(bad_values) do
-                assert.has_error(function() PitchClass:parse(v) end)
-            end
-        end)
-
-        it('pitchclass_gen', function()
-            local function test1(s)
-                local p = PitchClass:parse(s)
-                local found = false
-                for _, x in ipairs(PitchClass:all()) do
-                    if x == p then
-                        found = true
-                        break
-                    end
-                end
-                assert.is_true(found)
-            end
-            for _, n in ipairs{'A','C','D','F','G'} do test1(n .. '#') end
-            for _, n in ipairs{'A','B','D','E','G'} do test1(n .. 'b') end
-            for _, n in ipairs{'A','B','C','D','E','F','G'} do test1(n) end
-            assert.has_error(function() PitchClass:all('') end)
-        end)
-
-        it('pitchclass_repr', function()
-            PitchClass.static.unicode_output = false
-            assert.equal(tostring(PitchClass('C')), 'C')
-            assert.equal(tostring(PitchClass('C#')), 'C#')
-            assert.equal(tostring(PitchClass('Cb')), 'Cb')
-            assert.equal(tostring(PitchClass('C', -1)), 'Cb')
-        end)
-
-        it('pitchclass_flat_sharp', function()
-            assert.equal(PitchClass('C'):sharp(), PitchClass('C#'))
-            assert.equal(PitchClass('C'):sharp():sharp(), PitchClass('C##'))
-            assert.equal(PitchClass('C#'):sharp(), PitchClass('C##'))
-            assert.equal(PitchClass('C#'):flat(), PitchClass('C'))
-            assert.equal(PitchClass('B'):flat(), PitchClass('Bb'))
-            assert.equal(PitchClass('C#'):natural(), PitchClass('C'))
-            assert.equal(PitchClass('C##'):natural(), PitchClass('C'))
-            assert.equal(PitchClass('Eb'):natural(), PitchClass('E'))
-        end)
-
-        it('pitchclass_tooct', function()
-            assert.equal(PitchClass('Eb'):to_octave(5), Note('Eb5'))
-        end)
-
-        it('pitchclass_hashing', function()
-            local s = {}
-            s[tostring(Chord('Cmin'))] = true
-            s[tostring(Chord('Dmaj7'))] = true
-            assert.is_true(s[tostring(Chord('Cmin'))] ~= nil)
-            assert.is_true(s[tostring(Chord('Emin'))] == nil)
-            assert.is_true(s[tostring(Chord('Cmin'))] ~= nil)
-        end)
-
-        it('pitchclass_ordering', function()
-            local function test1(a, b)
-                local pa = PitchClass:parse(a)
-                local pb = PitchClass:parse(b)
-                assert.is_true(pa <= pb)
-                assert.is_true(pb >= pa)
-            end
-            test1('C', 'C')
-            test1('C', 'D')
-            test1('C', 'Dbbb')
-            test1('C###', 'Dbbb')
-            test1('C', 'A')
-
-            local function test2(l1, l2)
-                local t1 = {}
-                for _, s in ipairs(l1) do table.insert(t1, PitchClass:parse(s)) end
-                table.sort(t1)
-                local t2 = {}
-                for _, s in ipairs(l2) do table.insert(t2, PitchClass:parse(s)) end
-                assert.same(t1, t2)
-            end
-            test2({'C', 'D', 'E', 'F', 'G', 'A', 'B'}, {'C', 'D', 'E', 'F', 'G', 'A', 'B'})
-            test2({'A', 'C'}, {'C', 'A'})
-            test2({'C#', 'Db', 'Cb', 'Dbb', 'C'}, {'Cb', 'C', 'C#', 'Dbb', 'Db'})
-        end)
-    end)
-
-    describe('TestsForNote', function()
-        it('note_creation', function()
-            local function test1(s, pcn, pca, o)
-                local n = Note(PitchClass(pcn, pca), o)
-                assert.equal(n.pitch_class.name, pcn)
-                assert.equal(n.pitch_class.accidentals, pca)
-                assert.equal(n.octave, o)
-                assert.equal(n, Note(s))
-            end
-            test1('C#4', 'C', 1, 4)
-            test1('C2', 'C', 0, 2)
-
-            local bad_values = {'C', 1, true, nil, 1.5, {}, function() end}
-            for _, v in ipairs(bad_values) do
-                assert.has_error(function() Note(v, 0) end)
-            end
-            for _, v in ipairs{1.5, {}, function() end} do
-                assert.has_error(function() Note(PitchClass('C'), v) end)
-            end
-        end)
-
-        it('note_parsing', function()
-            local function test1(note, strnote)
-                assert.equal(tostring(Note(note)), strnote)
-            end
-            PitchClass.static.unicode_output = false
-            test1('A4', 'A4')
-            test1('Ab6', 'Ab6')
-            test1('Dbb4', 'Dbb4')
-            test1('G###0', 'G###0')
-
-            local bad_notes = {'A99', 'A#', 'Ab#', 'E#######5'}
-            for _, note in ipairs(bad_notes) do
-                assert.has_error(function() Note(note) end)
-            end
-
-            local function test3(note, pitch_class)
-                assert.equal(tostring(Note(note).pitch_class), pitch_class)
-            end
-            PitchClass.static.unicode_output = false
-            test3('A4', 'A')
-            test3('Ab6', 'Ab')
-            test3('Dbb3', 'Dbb')
-            test3('G###0', 'G###')
-
-            local function test4(note, pitch_name)
-                assert.equal(Note(note).pitch_class.name, pitch_name)
-            end
-            test4('A4', 'A')
-            test4('Ab6', 'A')
-            test4('Dbb3', 'D')
-            test4('G###0', 'G')
-
-            local function test5(note, acc)
-                assert.equal(Note(note).pitch_class.accidentals, acc)
-            end
-            test5('A4', 0)
-            test5('Ab6', -1)
-            test5('Dbb3', -2)
-            test5('G###0', 3)
-
-            local function test6(note, octave)
-                assert.equal(Note(note).octave, octave)
-            end
-            test6('A4', 4)
-            test6('Ab6', 6)
-            test6('Dbb3', 3)
-            test6('G###0', 0)
-
-            local bad_values = {1, true, nil, 1.5, {}, function() end}
-            for _, v in ipairs(bad_values) do
-                assert.has_error(function() Note:parse(v) end)
-            end
-        end)
-
-        it('note_gen', function()
-            local expected = {
-                'C4', 'C#4', 'Db4', 'D4', 'D#4', 'Eb4', 'E4', 'F4', 'F#4',
-                'Gb4', 'G4', 'G#4', 'Ab4', 'A4', 'A#4', 'Bb4', 'B4', 'C5',
-                'C#5', 'Db5', 'D5', 'D#5', 'Eb5', 'E5', 'F5', 'F#5', 'Gb5',
-                'G5', 'G#5', 'Ab5', 'A5', 'A#5', 'Bb5', 'B5'
-            }
-            local actual = {}
-            PitchClass.static.unicode_output = false
-            for _, n in ipairs(Note:all(4, 5)) do
-                table.insert(actual, tostring(n))
-            end
-            table.sort(actual)
-            table.sort(expected)
-            assert.same(actual, expected)
-        end)
-
-        it('note_oct', function()
-            local function test1(n1, oc, n2)
-                assert.equal(Note(n1):to_octave(oc), Note(n2))
-            end
-            test1('C#2', 5, 'C#5')
-            test1('B#6', 3, 'B#3')
-            test1('Cbbb6', 6, 'Cbbb6')
-            test1('Ebb5', 1, 'Ebb1')
-
-            assert.equal(Note('C#4').octave, 4)
-            assert.equal(Note('C#4'):to_octave(5).octave, 5)
-        end)
-
-        it('note_midi', function()
-            local function test1(note, midi)
-                assert.equal(Note(note).midi_note, midi)
-            end
-            test1('C4', 60)
-            test1('D5', 74)
-        end)
-
-        it('note_add', function()
-            local function test1(note, interval, result)
-                note = Note(note)
-                interval = Interval:parse(interval)
-                result = Note(result)
-                assert.equal(note + interval, result)
-                assert.equal(result - interval, note)
-                assert.equal(result - note, interval)
-            end
-            test1('A4', 'd5', 'Eb5')
-            test1('A4', 'P1', 'A4')
-            test1('G##4', 'm3', 'B#4')
-            test1('F3', 'P5', 'C4')
-            test1('B#4', 'd2', 'C5')
-            test1('C4', 'd1', 'Cb4')
-            test1('B4', 'd1', 'Bb4')
-            test1('C#4', 'd1', 'C4')
-            -- compound intervals:
-            test1('C4', 'M10', 'E5')
-            test1('Cb4', 'A10', 'E5')
-            test1('Cb4', 'm10', 'Ebb5')
-            test1('B3', 'm10', 'D5')
-            test1('B3', 'M17', 'D#6')
-
-            assert.has_error(function() return Note('C4') + {} end)
-            assert.has_error(function() return Note('C4') + 'invalid' end)
-        end)
-
-        it('note_sub', function()
-            local function test1(note1, note2, result)
-                assert.equal(Note(note1) - Note(note2), Interval:parse(result))
-            end
-            test1('E4', 'C4', 'M3')
-            test1('G5', 'C5', 'P5')
-            test1('C#6', 'C6', 'A1')
-            test1('Cb7', 'C7', 'd1')
-
-            assert.has_error(function() return Note('C4') - Note('C5') end)
-            assert.has_error(function() return Note('C4') - {} end)
-            assert.has_error(function() return Note('C4') - 'invalid' end)
-        end)
-
-        it('note_freq', function()
-            local function test1(note, freq)
-                assert.near(Note(note).frequency, freq, 0.1)
-            end
-            test1('A4', 440.0)
-            test1('A5', 880.0)
-            test1('C5', 523.3)
-        end)
-
-        it('note_lilypond', function()
-            local function test1(n, ln)
-                assert.equal(Note(n).lilypond_notation, ln)
-            end
-            test1('C3', 'c')
-            test1('C#4', 'cis\'')
-            test1('Cb2', 'ces,')
-        end)
-
-        it('note_repr', function()
-            PitchClass.static.unicode_output = false
-            assert.equal(tostring(Note('C#4')), 'C#4')
-        end)
-
-        it('note_ordering', function()
-            local function test1(l1, l2)
-                local t1 = {}
-                for _, s in ipairs(l1) do table.insert(t1, Note(s)) end
-                table.sort(t1)
-                local t2 = {}
-                for _, s in ipairs(l2) do table.insert(t2, Note(s)) end
-                assert.same(t1, t2)
-            end
-            test1({'G#3', 'D3', 'Ab3'}, {'D3', 'G#3', 'Ab3'})
-
-            local function test2(a, b)
-                assert.is_true(Note(a) <= Note(b))
-            end
-            test2('G#3', 'G##3')
-            test2('G#3', 'G#3')
-            test2('G###3', 'A3')
-        end)
-
-        it('note_hashing', function()
-            local s = {}
-            s[tostring(Note('C#4'))] = true
-            s[tostring(Note('C#4'))] = true
-            s[tostring(Note('Db4'))] = true
-            assert.equal(set.size(s), 2)
-        end)
-
-        it('note_from_number', function()
-            local function test1(num, maxacc, notes)
-                local allacc
-                if type(maxacc) == 'number' and maxacc ~= -1 then
-                    allacc = {}
-                    for i = -maxacc, maxacc do table.insert(allacc, i) end
-                else
-                    allacc = maxacc
-                end
-                local notes_list = Note:from_number(num, allacc)
-                local notes_str_list = {}
-                for _, n in pairs(notes_list) do
-                    table.insert(notes_str_list, tostring(n))
-                end
-                table.sort(notes_str_list)
-                table.sort(notes)
-                assert.equal(table.tostring(notes), table.tostring(notes_str_list))
-            end
-            test1(59, -1, {'B4'})
-            test1(59, 0, {'B4'})
-            test1(59, 1, {'B4', 'Cb5'})
-            test1(59, 2, {'A##4', 'B4', 'Cb5'})
-            test1(59, 3, {'A##4', 'B4', 'Cb5', 'Dbbb5'})
-            test1(60, -1, {'C5'})
-            test1(60, 0, {'C5'})
-            test1(60, 1, {'B#4', 'C5'})
-            test1(60, 2, {'B#4', 'C5', 'Dbb5'})
-            test1(60, 3, {'A###4', 'B#4', 'C5', 'Dbb5'})
-            test1(61, 0, {})
-            test1(61, 1, {'C#5', 'Db5'})
-            test1(61, 2, {'B##4', 'C#5', 'Db5'})
-            test1(61, 3, {'B##4', 'C#5', 'Db5', 'Ebbb5'})
-        end)
-    end)
-
-    describe('TestsForInterval', function()
-        it('interval_creation', function()
-            assert.has_error(function() Interval(3.6, 6) end)
-            assert.has_error(function() Interval('Q', 6) end)
-            assert.has_error(function() Interval('P', 6.5) end)
-            assert.has_error(function() Interval('P', -1) end)
-            assert.has_error(function() Interval('m', 5) end)
-        end)
-
-        it('interval_parsing', function()
-            local function test1(interval, semitones, size)
-                local i = Interval:parse(interval)
-                assert.equal(i.semitones, semitones)
-                assert.equal(i.size, size)
-            end
-            test1('d5', 6, 5)
-            test1('P8', 12, 8)
-            test1('A8', 13, 8)
-
-            local bad_intervals = {'P3', '<86ygr', {}}
-            for _, interval in ipairs(bad_intervals) do
-                assert.has_error(function() Interval:parse(interval) end)
-            end
-        end)
-
-        it('interval_add_sub', function()
-            assert.equal(Interval:parse('P5') + Interval:parse('m3'), Interval:parse('m7'))
-            assert.equal(Interval:parse('P5') + Interval:parse('m3') + Interval:parse('M2'), Interval:parse('P8'))
-            assert.equal(Interval:parse('P5') + Interval:parse('m3') + Interval:parse('M2') + Interval:parse('P8'), Interval:parse('P15'))
-            assert.equal(Interval:parse('P5') + Interval:parse('m3') + Interval:parse('M2') - Interval:parse('P8'), Interval:parse('P1'))
-            assert.has_error(function() return Interval:parse('m3') - Interval:parse('P5') end)
-        end)
-
-        it('interval_complement', function()
-            local function test1(i, c)
-                assert.equal(Interval:parse(i):complement(), Interval:parse(c))
-            end
-            test1('P1', 'P8')
-            test1('A1', 'd8')
-            test1('d2', 'A7')
-            test1('m2', 'M7')
-            test1('M2', 'm7')
-            test1('A2', 'd7')
-            test1('d3', 'A6')
-            test1('m3', 'M6')
-            test1('M3', 'm6')
-            test1('A3', 'd6')
-            test1('d4', 'A5')
-            test1('P4', 'P5')
-            test1('A4', 'd5')
-            test1('d5', 'A4')
-            test1('P5', 'P4')
-            test1('A5', 'd4')
-            test1('d6', 'A3')
-            test1('m6', 'M3')
-            test1('M6', 'm3')
-            test1('A6', 'd3')
-            test1('d7', 'A2')
-            test1('m7', 'M2')
-            test1('M7', 'm2')
-            test1('A7', 'd2')
-            test1('d8', 'A1')
-            test1('P8', 'P1')
-            test1('A8', 'd1')
-
-            assert.has_error(function() Interval:parse('M9'):complement() end)
-            assert.has_error(function() Interval:parse('M10'):complement() end)
-        end)
-    end)
-
-    describe('TestsForChord', function()
-        it('chord_creation', function()
-            PitchClass.static.unicode_output = false
-            local function test1(root, name, strchord)
-                assert.equal(tostring(Chord(PitchClass(root), name)), strchord)
-                if name then
-                    assert.equal(tostring(Chord(root, name)), strchord)
-                end
-            end
-            test1('A', 'maj', 'Amaj')
-            test1('A', nil, 'Amaj')
-            assert.equal(tostring(Chord(PitchClass('A'))), 'Amaj')
-            test1('B', 'min', 'Bmin')
-            test1('C', 'dim', 'Cdim')
-            test1('D', 'aug', 'Daug')
-            test1('A#', 'maj', 'A#maj')
-            test1('Bb', 'maj', 'Bbmaj')
-
-            local bad_names = {'A$', 'H', 'C#1', 'C#1maj', 'C#maj1'}
-            for _, name in ipairs(bad_names) do
-                assert.has_error(function() Chord(name) end)
-            end
-
-            local bad_types = {'nice', '$', 'diminished'}
-            for _, t in ipairs(bad_types) do
-                assert.has_error(function() Chord(PitchClass('C'), t) end)
-            end
-
-            assert.has_error(function() Chord(Note('F#4')) end)
-            assert.has_error(function() Chord(PitchClass('F#'), 'locrian') end)
-            assert.has_error(function() Chord(PitchClass('F#'), 3.56) end)
-            assert.has_error(function() Chord(PitchClass('F#'), {'Z1', Interval:parse('m3')}) end)
-            assert.has_error(function() Chord(PitchClass('F#'), {'P1', 'm3', 5.66}) end)
-            assert.has_error(function() Chord(PitchClass('F#'), {Interval:parse('m3'), 8.88}) end)
-        end)
-
-        it('chord_parsing', function()
-            local function test1(name, root, chord_type)
-                assert.equal(Chord(name), Chord(PitchClass(root), chord_type))
-            end
-            test1('CM', 'C', 'maj')
-            test1('Cmaj', 'C', 'maj')
-            test1('Cmaj', 'C', 'M')
-            test1('Cmaj7', 'C', 'M7')
-            test1('D#aug7', 'D#', 'aug7')
-            test1('Cbdim', 'Cb', 'dim')
-            test1('Eb9', 'Eb', 'dom9')
-
-            local bad_values = {1, true, nil, 1.5, {}, function() end}
-            for _, v in ipairs(bad_values) do
-                assert.has_error(function() Chord:parse(v) end)
-            end
-        end)
-
-        it('chord_invert', function()
-            local function test1(chord_name, i, pitch_names)
-                local chord = Chord(chord_name):invert(i)
-                local pitches = chord:pitches()
-                assert.equal(#pitch_names, #pitches)
-                for i = 1, #pitch_names do assert.equal(pitch_names[i], tostring(pitches[i])) end
-            end
-            test1('Cmaj', 0, {'C', 'E', 'G'})
-            test1('Cmaj', 1, {'E', 'G', 'C'})
-            test1('Cmaj', 2, {'G', 'C', 'E'})
-            test1('Cmaj', 3, {'C', 'E', 'G'})
-            test1('Cmaj7', 0, {'C', 'E', 'G', 'B'})
-            test1('Cmaj7', 1, {'E', 'G', 'B', 'C'})
-            test1('Cmaj7', 2, {'G', 'B', 'C', 'E'})
-            test1('Cmaj7', 3, {'B', 'C', 'E', 'G'})
-            test1('Cmaj7', 4, {'C', 'E', 'G', 'B'})
-        end)
-
-        it('chord_inversion_parsing', function()
-            local function test1(chord_name, pitch_names)
-                local chord = Chord(chord_name)
-                local pitches = chord:pitches(oct)
-                assert.equal(#pitch_names, #pitches)
-                for i = 1, #pitch_names do assert.equal(pitch_names[i], tostring(pitches[i])) end
-            end
-            test1('Cmin', {'C', 'Eb', 'G'})
-            test1('Cmin/Eb', {'Eb', 'G', 'C'})
-            test1('Cmin/G', {'G', 'C', 'Eb'})
-        end)
-
-        it('chord_inversion_to_string', function()
-            local function test1(chord_name, i, s)
-                local chord = Chord(chord_name):invert(i or 0)
-                assert.equal(s or chord_name, tostring(chord))
-            end
-            test1('Cmin')
-            test1('Cmin7')
-            test1('Cmin', 1, 'Cmin/Eb')
-            test1('Cmin', 2, 'Cmin/G')
-            test1('Cmin/Eb')
-            test1('Cmin/G')
-        end)
-
-        it('chord_identify_from_notes', function()
-            local function test1(notes_str, chord_str)
-                chord_str = tostring(Chord(chord_str))
-                local notes = {}
-                for _, note_str in ipairs(notes_str) do
-                    table.insert(notes, Note(note_str))
-                end
-                local results = Chord:identify_from_notes(notes)
-                assert.is_true(#results > 0, 'no result')
-                for _, result in ipairs(results) do
-                    local result_str = tostring(result)
-                    if result_str == chord_str then return end
-                    table.insert(results_str, result_str)
-                end
-                assert.is_true(false, 'Expected: ' .. chord_str .. ' (not found in results: ' .. table.tostring(results_str) .. ')')
-            end
-            test1({'C4', 'E4', 'G4'}, 'Cmaj')
-            test1({'C4', 'Eb4', 'G4'}, 'Cmin')
-            test1({'C4', 'E4', 'G4', 'Bb4'}, 'C7')
-            test1({'C2', 'Eb2', 'Gb2'}, 'Cdim')
-            test1({'B0', 'D1', 'F1'}, 'Bdim')
-        end)
-
-        it('chord_identify_from_intervals', function()
-            local function test1(intervals_str, recipe_name, inv)
-                local intervals = {}
-                for _, interval_str in ipairs(intervals_str) do
-                    table.insert(intervals, Interval(interval_str))
-                end
-                local results = Chord:identify_from_intervals(intervals)
-                assert.is_true(#results > 0, 'no result')
-                for _, result in ipairs(results) do
-                    if result.name == recipe_name and result.inversion == inv then return end
-                end
-                assert.is_true(false, 'Expected: ' .. recipe_name .. ' inv=' .. inv .. ' (not found in results: ' .. table.tostring(results) .. ')')
-            end
-            test1({'P1', 'M3', 'P5'}, 'maj', 0)
-            test1({'P1', 'm3', 'P5'}, 'min', 0)
-        end)
-    end)
-
-    describe('TestsForScale', function()
-        it('note_scales', function()
-            local function test1(root, name, pitches)
-                local scale = Scale(root, name)
-                local expected = {}
-                for _, p in ipairs(pitches) do
-                    table.insert(expected, PitchClass:parse(p))
-                end
-                assert.same(scale.pitches, expected)
-            end
-            test1('C', 'major', {'C', 'D', 'E', 'F', 'G', 'A', 'B'})
-            test1('C', 'natural_minor', {'C', 'D', 'Eb', 'F', 'G', 'Ab', 'Bb'})
-            test1('C', 'harmonic_minor', {'C', 'D', 'Eb', 'F', 'G', 'Ab', 'B'})
-            test1('C', 'melodic_minor', {'C', 'D', 'Eb', 'F', 'G', 'A', 'B'})
-            test1('C', 'dorian', {'C', 'D', 'Eb', 'F', 'G', 'A', 'Bb'})
-            test1('C', 'locrian', {'C', 'Db', 'Eb', 'F', 'Gb', 'Ab', 'Bb'})
-            test1('C', 'lydian', {'C', 'D', 'E', 'F#', 'G', 'A', 'B'})
-            test1('C', 'mixolydian', {'C', 'D', 'E', 'F', 'G', 'A', 'Bb'})
-            test1('C', 'phrygian', {'C', 'Db', 'Eb', 'F', 'G', 'Ab', 'Bb'})
-            test1('C', 'major_pentatonic', {'C', 'D', 'E', 'G', 'A'})
-            test1('C', 'minor_pentatonic', {'C', 'Eb', 'F', 'G', 'Bb'})
-            test1('Db', 'natural_minor', {'Db', 'Eb', 'Fb', 'Gb', 'Ab', 'Bbb', 'Cb'})
-        end)
-    end)
-
-    describe('TestsForUnicodeOutput', function()
-        it('unicode_output', function()
-            PitchClass.static.unicode_output = true
-            local function test1(a, b)
-                assert.equal(tostring(Note(a)), b)
-            end
-            test1('F#3', 'F♯3')
-            test1('F##3', 'F𝄪3')
-            test1('Gb5', 'G♭5')
-            test1('Gbb5', 'G𝄫5')
-        end)
-    end)
-end
-
-if arg[1] == 'test' then
-    arg = {}
-    test()
-else
-    return {
-        PitchClass = PitchClass,
-        Note = Note,
-        Interval = Interval,
-        Chord = Chord,
-        Scale = Scale,
-        test = test,
-    }
-end
+return {
+    PitchClass = PitchClass,
+    Note = Note,
+    Interval = Interval,
+    Chord = Chord,
+    Scale = Scale,
+}
