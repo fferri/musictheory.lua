@@ -969,6 +969,22 @@ Scale.static.scales = {
     mixolydian = {'P1', 'M2', 'M3', 'P4', 'P5', 'M6', 'm7'},
     aeolian = {'P1', 'M2', 'm3', 'P4', 'P5', 'm6', 'm7'},
     locrian = {'P1', 'm2', 'm3', 'P4', 'd5', 'm6', 'm7'},
+    -- non-diatonic scales:
+    phrygian_dominant = {'P1', 'm2', 'M3', 'P4', 'P5', 'm6', 'm7'},
+    ukrainian_dorian = {'P1', 'M2', 'm3', 'A4', 'P5', 'm6', 'm7'},
+    hungarian_minor = {'P1', 'M2', 'm3', 'A4', 'P5', 'm6', 'M7'},
+    lydian_augmented = {'P1', 'M2', 'M3', 'A4', 'A5', 'M6', 'M7'},
+    lydian_dominant = {'P1', 'M2', 'M3', 'A4', 'P5', 'M6', 'm7'},
+    enigmatic = {'P1', 'm2', 'M3', 'A4', 'A5', 'A6', 'M7'},
+    double_harmonic = {'P1', 'm2', 'M3', 'P4', 'P5', 'm6', 'M7'},
+    --double_harmonic_minor = hungarian_minor,
+    persian = {'P1', 'm2', 'M3', 'P4', 'd5', 'm6', 'M7'},
+    altered_scale = {'P1', 'm2', 'm3', 'M3', 'A4', 'm6', 'm7'},
+    oriental = {'P1', 'm2', 'M3', 'P4', 'd5', 'M6', 'm7'},
+    ionian_A2A5 = {'P1', 'A2', 'M3', 'P4', 'A5', 'M6', 'M7'},
+    locrian_d3d7 = {'P1', 'm2', 'd3', 'P4', 'd5', 'm6', 'd7'},
+    lydian_A2A6 = {'P1', 'A2', 'M3', 'A4', 'P5', 'A6', 'M7'},
+    ultraphrygian = {'P1', 'm2', 'm3', 'd4', 'P5', 'm6', 'd7'},
 }
 
 Scale.static.greek_modes = {
@@ -1173,6 +1189,33 @@ function Scale:__hash()
         h = h + interval:__hash()
     end
     return h
+end
+
+function Scale:is_diatonic()
+    if #self.intervals ~= 7 then return false end
+    local semitones = {}
+    for _, interval in ipairs(self.intervals) do
+        table.insert(semitones, interval.semitones)
+    end
+    table.sort(semitones)
+    local intervals = {}
+    for i = 1, #semitones do
+        local next_i = (i % #semitones) + 1
+        intervals[i] = (semitones[next_i] - semitones[i]) % 12
+    end
+    -- check if intervals match WWHWWWH pattern (or a rotation)
+    local pattern = {2,2,1,2,2,2,1}
+    for shift = 0, 6 do
+        local match = true
+        for i = 1, 7 do
+            if intervals[i] ~= pattern[((i + shift - 1) % 7) + 1] then
+                match = false
+                break
+            end
+        end
+        if match then return true end
+    end
+    return false
 end
 
 function Scale:find_similar(max_levenshtein_dist, include_greek_modes)
