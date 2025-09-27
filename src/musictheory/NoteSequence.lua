@@ -77,11 +77,19 @@ function NoteSequence:get_notes(pred)
 end
 
 function NoteSequence:get_notes_in_range(time_min, time_max, note_min, note_max)
-    time_min, note_min = NoteSequence:get_time_note(time_min, note_min, 'time_min', 'note_min')
-    time_max, note_max = NoteSequence:get_time_note(time_max, note_max, 'time_max', 'note_max')
-    return self:get_notes(function(n)
-        return time_min < (n.time + n.duration) and time_max >= n.time and note_min <= n.note and n.note <= note_max
-    end)
+    if note_min and note_max then
+        time_min, note_min = NoteSequence:get_time_note(time_min, note_min, 'time_min', 'note_min')
+        time_max, note_max = NoteSequence:get_time_note(time_max, note_max, 'time_max', 'note_max')
+        return self:get_notes(function(n)
+            return time_min < (n.time + n.duration) and time_max >= n.time and note_min <= n.note and n.note <= note_max
+        end)
+    else
+        time_min = NoteSequence:get_time(time_min, 'time_min')
+        time_max = NoteSequence:get_time_note(time_max, 'time_max')
+        return self:get_notes(function(n)
+            return time_min < (n.time + n.duration) and time_max >= n.time
+        end)
+    end
 end
 
 function NoteSequence:get_notes_starting_at(time)
