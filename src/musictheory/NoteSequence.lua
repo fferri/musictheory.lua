@@ -48,16 +48,8 @@ function NoteSequence.static:pack_note(time, note, info)
     return note_info
 end
 
-function NoteSequence.static:unpack_note(time, note, info)
-    if type(time) == 'table' then
-        assert(note == nil and info == nil, 'too many arguments')
-        local t = time
-        time, note, info = t.time, t.note, t
-    end
-    return time, note, info
-end
-
 function NoteSequence:initialize()
+    self.listeners = {}
     self:clear()
 end
 
@@ -103,29 +95,47 @@ function NoteSequence:get_note(time, note)
     return note_info
 end
 
-function NoteSequence:set_note(time, note, info)
-    time, note, info = NoteSequence:unpack_note(time, note, info)
+function NoteSequence:set_note(time, note, info, opts)
+    opts = opts or {}
     time, note = NoteSequence:get_time_note(time, note)
     assert(type(info) == 'table' or info == nil, 'invalid type for note info')
     info = info or {}
     if not self.data[time] then self.data[time] = {} end
-    if not self.data[time][note] then self.data[time][note] = {} end
+    local added = false
+    if not self.data[time][note] then
+        self.data[time][note] = {}
+        added = true
+    end
+    local old_info = self:get_note(time, note)
+    local changed = false
     -- duration is the only special value handled here
-    self.data[time][note].duration = NoteSequence:get_time(info.duration or self.data[time][note].duration or 1, 'duration')
+    self.data[time][note].duration = NoteSequence:get_time(info.duration or old_info.duration or 1, 'duration')
+    if self.data[time][note].duration ~= old_info.duration then
+        changed = true
+    end
     -- the user can add as many values as he wants:
     local reserved = {time = true, note = true, duration = true}
     for k, v in pairs(info) do
         if not reserved[k] then
+            if self.data[time][note][k] ~= v then
+                changed = true
+            end
             self.data[time][note][k] = v
         end
     end
+    if opts.notify ~= false and (added or changed) then
+        self:notify_listeners(added and 'added' or 'changed', self:get_note(time, note))
+    end
 end
 
-function NoteSequence:clear_note(time, note)
-    time, note = NoteSequence:unpack_note(time, note)
+function NoteSequence:clear_note(time, note, opts)
+    opts = opts or {}
     time, note = NoteSequence:get_time_note(time, note)
     if self.data[time] then
         if self.data[time][note] then
+            if opts.notify ~= false then
+                self:notify_listeners('removed', self:get_note(time, note))
+            end
             self.data[time][note] = nil
             if next(self.data[time]) == nil then
                 self.data[time] = nil
@@ -134,16 +144,35 @@ function NoteSequence:clear_note(time, note)
     end
 end
 
-function NoteSequence:move_note(time, note, new_time, new_note)
+function NoteSequence:move_note(time, note, new_time, new_note, opts)
+    opts = opts or {}
     time, note = NoteSequence:get_time_note(time, note)
     local note_info = self:get_note(time, note)
     assert(note_info ~= nil, 'note does not exist')
     new_time, new_note = NoteSequence:get_time_note(new_time, new_note, 'new_time', 'new_note')
     if note == new_note and time == new_time then return end
-    self:clear_note(note_info)
-    note_info.time = new_time
-    note_info.note = new_note
-    self:set_note(note_info)
+    self:clear_note(note_info.time, note_info.note, {notify = false})
+    self:set_note(new_time, new_note, note_info, {notify = false})
+    if opts.notify ~= false then
+        local note_info = self:get_note(new_time, new_note)
+        note_info.old_time = time
+        note_info.old_note = note
+        self:notify_listeners('changed', note_info)
+    end
+end
+
+function NoteSequence:add_listener(f)
+    self.listeners[f] = {}
+end
+
+function NoteSequence:remove_listener(f)
+    self.listeners[f] = nil
+end
+
+function NoteSequence:notify_listeners(...)
+    for listener in pairs(self.listeners) do
+        listener(...)
+    end
 end
 
 return NoteSequence
