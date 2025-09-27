@@ -50,11 +50,17 @@ end
 
 function NoteSequence:initialize()
     self.listeners = {}
-    self:clear()
+    self.data = {} -- time -> note -> info (duration + user fields)
 end
 
-function NoteSequence:clear()
-    self.data = {} -- time -> note -> info (duration + user fields)
+function NoteSequence:clear(opts)
+    opts = opts or {}
+    for _, note_info in ipairs(self:get_notes()) do
+        if opts.notify ~= false then
+            self:notify_listeners('removed', note_info)
+        end
+    end
+    self.data = {}
 end
 
 function NoteSequence:get_notes(pred)
