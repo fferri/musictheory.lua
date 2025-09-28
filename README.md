@@ -2,6 +2,16 @@
 
 A Lua library for working with music theory concepts such as notes, intervals, chords, scales, etc.
 
+## Installing
+
+Install via luarocks.
+
+For development, you can install locally with e.g.:
+
+```sh
+luarocks --lua-version 5.4 make musictheory-*.rockspec
+```
+
 ## Example Usage
 
 ```lua
@@ -28,7 +38,7 @@ There are more classes and methods. Have a look at the source code.
 
 ## Contributing
 
-musictheory.lua is open-source and contributions in the form of issues, documentation, pull requests, unit tests, etc are welcomee.
+musictheory.lua is open-source and contributions in the form of issues, documentation, pull requests, unit tests, etc are welcome.
 
 ## License
 
