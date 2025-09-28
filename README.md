@@ -31,7 +31,8 @@ mt.Note'B4' - c4 == mt.Interval'M7'
 c4.pitch_class == mt.PitchClass'C'
 
 -- chords:
-mt.Chord('C', 'min'):notes() == {mt.Note'C4', mt.Note'E♭4', mt.Note'G4'}
+Cm = mt.Chord('C', 'min')
+Cm:notes() == {mt.Note'C4', mt.Note'E♭4', mt.Note'G4'}
 ```
 
 There are more classes and methods. Have a look at the source code.
