@@ -32,7 +32,12 @@ c4.pitch_class == mt.PitchClass'C'
 
 -- chords:
 Cm = mt.Chord('C', 'min')
-Cm:notes() == {mt.Note'C4', mt.Note'E♭4', mt.Note'G4'}
+Cm.pitches == {mt.PitchClass'C', mt.PitchClass'E♭', mt.PitchClass'G'}
+
+-- inversions (a.k.a. slash chords):
+Cm:invert(1) == mt.Chord'Cmin/E♭'
+Cm:invert(1).bass == mt.PitchClass'E♭'
+Cm:invert(1).root == mt.PitchClass'C'
 ```
 
 There are more classes and methods. Have a look at the source code.
